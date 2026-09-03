@@ -1,0 +1,11 @@
+streamlit
+biopython
+requests
+pandas
+numpy
+py3Dmol
+stmol
+plotly
+fpdf==1.7.2
+matplotlib
+ipython-genutils
