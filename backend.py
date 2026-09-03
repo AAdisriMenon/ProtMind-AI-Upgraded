@@ -525,7 +525,6 @@ def sanitize_for_pdf(text: str) -> str:
     """Strips non-Latin-1 characters, emojis, and symbols that crash FPDF."""
     if not isinstance(text, str):
         text = str(text)
-    # Replace common symbols with plain-text equivalents
     replacements = {
         "🔴": "[High Risk]",
         "🟠": "[Moderate]",
@@ -544,20 +543,33 @@ def sanitize_for_pdf(text: str) -> str:
     }
     for orig, repl in replacements.items():
         text = text.replace(orig, repl)
-    # Strip any remaining unencodable characters
     return text.encode("latin-1", "ignore").decode("latin-1")
 
 
-def generate_pdf_report(payload: dict, ddg_status: str, ppi_count: int, angles: dict = None) -> bytes:
-    """Compiles dashboard data and structural plot into a clean PDF binary."""
+def generate_pdf_report(payload: dict = None, results: dict = None, **kwargs) -> bytes:
+    """
+    Compiles dashboard data and structural plot into a clean PDF binary.
+    Accepts payload, results dictionary, or direct kwargs.
+    """
+    if payload is None:
+        payload = {}
+    if results is None:
+        results = kwargs.get("report_results", {})
+
     pdf = FPDF()
     pdf.add_page()
+    
+    # Extract values safely from either results dictionary or kwargs
+    ddg_status = results.get("ddg_status") or kwargs.get("ddg_status", "Neutral / Tolerated")
+    ppi_count = results.get("ppi_count") or kwargs.get("ppi_count", 0)
+    angles = results.get("angles") or kwargs.get("angles", None)
     
     # Clean incoming data strings
     safe_uniprot = sanitize_for_pdf(payload.get('uniprot_id', 'N/A'))
     safe_mutation = sanitize_for_pdf(payload.get('mutation', 'N/A'))
     safe_status = sanitize_for_pdf(ddg_status)
-    seq_len = len(payload.get('sequence', ''))
+    seq = payload.get('sequence', '')
+    seq_len = len(seq)
     
     # 1. Header
     pdf.set_font("Arial", 'B', 18)
@@ -584,7 +596,7 @@ def generate_pdf_report(payload: dict, ddg_status: str, ppi_count: int, angles: 
     pdf.cell(0, 7, txt=f"Thermodynamic Shift (Delta-Delta-G) : {safe_status}", ln=True)
     pdf.cell(0, 7, txt=f"Protein-Protein Interaction Partners : {ppi_count} potential interactors detected", ln=True)
     
-    if angles and angles.get('phi') is not None and angles.get('psi') is not None:
+    if angles and isinstance(angles, dict) and angles.get('phi') is not None and angles.get('psi') is not None:
         pdf.cell(0, 7, txt=f"Torsion Angles (Phi / Psi)          : {angles['phi']:.2f} deg / {angles['psi']:.2f} deg", ln=True)
     pdf.ln(6)
     
@@ -630,6 +642,5 @@ def generate_pdf_report(payload: dict, ddg_status: str, ppi_count: int, angles: 
     pdf.set_font("Arial", '', 10)
     pdf.multi_cell(0, 6, txt="Automated multidimensional analysis indicates that the introduced amino acid alteration causes local structural strain and thermodynamic instability, disrupting functional binding interfaces. In-vitro characterization and small-molecule screening via ChEMBL targets are recommended.")
     
-    # Return output safely as bytes
     raw_output = pdf.output(dest='S')
     return raw_output.encode('latin-1') if isinstance(raw_output, str) else bytes(raw_output)
