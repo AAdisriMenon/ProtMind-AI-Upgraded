@@ -247,37 +247,37 @@ AA_VOLUME = {
 
 def predict_thermodynamic_stability(wt_aa: str, mut_aa: str, wt_property: str, mut_property: str) -> dict:
     """
-    Estimates the change in Gibbs Free Energy (ΔΔG, kcal/mol). 
-    Balanced so that favorable substitutions and good evolutionary scores yield negative (stabilizing) values.
+    Computes ΔΔG (kcal/mol) with a true bidirectional baseline. 
+    Favorable/conserved changes result in negative (stabilizing) values.
     """
     hydro_diff = KYTE_DOOLITTLE.get(mut_aa, 0.0) - KYTE_DOOLITTLE.get(wt_aa, 0.0)
     vol_diff = AA_VOLUME.get(mut_aa, 0.0) - AA_VOLUME.get(wt_aa, 0.0)
     blosum = blosum62_score(wt_aa, mut_aa)
 
-    # Start with a balanced baseline influenced heavily by evolutionary conservation (BLOSUM62)
-    # High BLOSUM scores (>0) actively drive ΔΔG negative (stabilizing).
-    # Mismatches and volume/hydrophobic shifts add penalties.
+    # Start from a true neutral base of 0.0
+    # Positive BLOSUM scores and matching volumes actively push the energy DOWN (negative/stabilizing).
+    # Discrepancies and structural breakers pull it UP (positive/destabilizing).
     ddg_score = 0.0
     
-    # Evolutionary driver (BLOSUM62 ranges typically from -4 to +11)
-    ddg_score -= (blosum * 0.35)  
+    # Evolutionary and property alignment (higher blosum = more negative/stable)
+    ddg_score -= (blosum * 0.45)  
     
-    # Structural/physical penalties
-    ddg_score += (abs(vol_diff) / 100.0) * 0.4
-    ddg_score += abs(hydro_diff) * 0.08
+    # Physical mismatch penalties
+    ddg_score += (abs(vol_diff) / 100.0) * 0.3
+    ddg_score += abs(hydro_diff) * 0.05
 
-    # Structural breakers (add penalties)
+    # Structural breakers
     if 'P' in (wt_aa, mut_aa):
-        ddg_score += 1.0
+        ddg_score += 0.8
     if 'G' in (wt_aa, mut_aa):
-        ddg_score += 0.6
+        ddg_score += 0.5
     if wt_aa == 'C' and mut_aa != 'C':
-        ddg_score += 1.5
+        ddg_score += 1.2
 
     ddg_score = round(ddg_score, 2)
 
-    # Classification logic for negative vs positive values
-    if ddg_score <= -0.2:
+    # Classification logic supporting negative values
+    if ddg_score <= -0.1:
         status, color, alert = "Thermodynamically Stable / Favorable", "🟢", "Mutation is estimated to improve structural stability."
     elif ddg_score >= 2.0:
         status, color, alert = "Highly Destabilizing", "🔴", "High risk of protein misfolding or structural collapse."
@@ -294,7 +294,7 @@ def predict_thermodynamic_stability(wt_aa: str, mut_aa: str, wt_property: str, m
         "hydrophobicity_delta": round(hydro_diff, 2),
         "volume_delta": round(vol_diff, 1),
         "blosum62": blosum,
-        "method": "Empirical composite model with weighted BLOSUM62 evolutionary scaling for bidirectional ΔΔG estimation."
+        "method": "Bidirectional empirical model utilizing BLOSUM62 subtraction scaling."
     }
 def compute_composite_risk(stability: dict, pathogenicity: dict, ppi_count: int, angles_valid: bool) -> dict:
     """
