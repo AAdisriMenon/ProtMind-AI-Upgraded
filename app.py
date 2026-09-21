@@ -25,20 +25,3 @@ if st.session_state['payload']:
     ]
     done = sum(1 for _, key in stage_map if key in results)
     st.progress(done / len(stage_map), text=f"Pipeline progress: {done}/{len(stage_map)} analysis stages completed this session")
-st.markdown("### Stereochemical Validation")
-st.markdown("Evaluating backbone strain and torsional feasibility of the mutated residue.")
-
-# Render your plot
-fig = generate_ramachandran_plot(phi, psi, mutation)
-st.plotly_chart(fig, use_container_width=True)
-
-# Description Box matching your layout design
-st.info("""
-**Angles falling in the blank (white) areas of the plot represent steric clashes—the atoms are physically overlapping.**
-""")
-
-st.markdown("""
-- **Allowed (Pink):** Optimal backbone torsion without steric clashes.
-- **Partially Allowed (Blue):** Torsion permitted with slight conformational strain.
-- **Disallowed (White):** Severe steric overlap; mutation is highly unstable.
-""")
