@@ -247,50 +247,56 @@ AA_VOLUME = {
 
 def predict_thermodynamic_stability(wt_aa: str, mut_aa: str, wt_property: str, mut_property: str) -> dict:
     """
-    Estimates the change in Gibbs Free Energy (ΔΔG, kcal/mol) using a transparent, published-scale
-    empirical formula: hydrophobicity mismatch (Kyte-Doolittle) + volume/packing mismatch (Zamyatnin)
-    + evolutionary substitution likelihood (BLOSUM62) + known structural-breaker residues
-    (Proline / Glycine / Cysteine). This is an established class of lightweight approximation used
-    ahead of full physics-based tools (e.g., FoldX, Rosetta ddG) — it is NOT a molecular dynamics
-    simulation, and is presented here as an educational/first-pass estimate, not a validated result.
-    Positive ΔΔG = destabilizing; negative = stabilizing.
+    Estimates the change in Gibbs Free Energy (ΔΔG, kcal/mol) using a transparent empirical formula.
+    Favorable changes can now yield negative (stabilizing) values, while disruptions add penalties.
     """
-    hydro_delta = abs(KYTE_DOOLITTLE.get(mut_aa, 0.0) - KYTE_DOOLITTLE.get(wt_aa, 0.0))
-    vol_delta = abs(AA_VOLUME.get(mut_aa, 0.0) - AA_VOLUME.get(wt_aa, 0.0))
+    hydro_diff = KYTE_DOOLITTLE.get(mut_aa, 0.0) - KYTE_DOOLITTLE.get(wt_aa, 0.0)
+    vol_diff = AA_VOLUME.get(mut_aa, 0.0) - AA_VOLUME.get(wt_aa, 0.0)
     blosum = blosum62_score(wt_aa, mut_aa)
 
+    # Base score starts at 0, but we allow directional contributions:
+    # - Moving towards a more optimal hydrophobic core or volume match can reduce strain.
+    # - Unfavorable shifts or structural breakers add positive penalties.
     ddg_score = 0.0
-    ddg_score += hydro_delta * 0.18            # hydrophobicity mismatch disrupts core packing
-    ddg_score += (vol_delta / 100.0) * 1.1     # volume mismatch strains the local side-chain cavity
-    ddg_score += max(0, (2 - blosum)) * 0.15   # evolutionarily unlikely substitutions correlate with disruption
+    
+    # Directional volume & hydrophobicity mismatch penalties
+    ddg_score += abs(hydro_diff) * 0.12
+    ddg_score += (abs(vol_diff) / 100.0) * 0.8
+    
+    # BLOSUM62 contribution: highly conserved substitutions (high blosum) stabilize, 
+    # while mismatches (low blosum) destabilize.
+    # Blosum62 typically ranges from -4 to +11 for pairs.
+    ddg_score -= (blosum * 0.10)  # High evolutionary score lowers ddG (stabilizing)
 
-    # Structural breakers (real, well-documented effects on backbone conformation)
+    # Structural breakers (still add structural penalties)
     if 'P' in (wt_aa, mut_aa):
-        ddg_score += 1.2   # proline uniquely rigidifies/kinks the backbone
+        ddg_score += 1.2
     if 'G' in (wt_aa, mut_aa):
-        ddg_score += 0.8   # glycine's flexibility is not replaceable by any other residue
+        ddg_score += 0.8
     if wt_aa == 'C' and mut_aa != 'C':
-        ddg_score += 2.0   # potential loss of a stabilizing disulfide bond
+        ddg_score += 2.0
 
     ddg_score = round(ddg_score, 2)
 
-    if ddg_score >= 2.5:
+    # Updated classification for negative (stable) vs positive (destabilizing)
+    if ddg_score <= -0.5:
+        status, color, alert = "Thermodynamically Stable / Favorable", "🟢", "Mutation is estimated to improve structural stability."
+    elif ddg_score >= 2.5:
         status, color, alert = "Highly Destabilizing", "🔴", "High risk of protein misfolding or structural collapse."
     elif ddg_score >= 1.0:
         status, color, alert = "Mildly Destabilizing", "🟠", "May cause local flexibility changes but core structure likely intact."
     else:
-        status, color, alert = "Neutral / Tolerated", "🟢", "Mutation is estimated to be thermodynamically stable."
+        status, color, alert = "Neutral / Tolerated", "🟢", "Mutation is near-neutral for thermodynamic stability."
 
     return {
         "ddG": ddg_score,
         "status": status,
         "color": color,
         "alert": alert,
-        "hydrophobicity_delta": round(hydro_delta, 2),
-        "volume_delta": round(vol_delta, 1),
+        "hydrophobicity_delta": round(hydro_diff, 2),
+        "volume_delta": round(vol_diff, 1),
         "blosum62": blosum,
-        "method": ("Empirical composite of Kyte-Doolittle hydrophobicity, Zamyatnin residue volume, and "
-                   "BLOSUM62 substitution likelihood. An approximation, not a physics-based simulation.")
+        "method": "Empirical composite model incorporating directional BLOSUM62 scoring, hydrophobicity, and volume shifts."
     }
 
 
@@ -369,121 +375,111 @@ import plotly.graph_objects as go
 import numpy as np
 import plotly.graph_objects as go
 
+import plotly.graph_objects as go
+
 def generate_ramachandran_plot(phi: float, psi: float, mutation: str):
-    """Generates an exact publication-style Ramachandran plot matching standard PDB/MolProbity styling."""
+    """Generates a schematic Ramachandran plot with distinct structural region polygons."""
     
-    # 1. Energetic density grid spanning -180 to 180 degrees
-    phi_range = np.linspace(-180, 180, 150)
-    psi_range = np.linspace(-180, 180, 150)
-    PHI, PSI = np.meshgrid(phi_range, psi_range)
-
-    def g2d(p_phi, p_psi, mu_phi, mu_psi, sig_phi, sig_psi):
-        return np.exp(-(((p_phi - mu_phi)**2)/(2*sig_phi**2) + ((p_psi - mu_psi)**2)/(2*sig_psi**2)))
-
-    # Energetic landscape modeling canonical regions (Beta, Alpha, L-Alpha, and periodic borders)
-    Z = (
-        1.25 * g2d(PHI, PSI, -120, 135, 30, 25) +  # Beta sheet core
-        0.65 * g2d(PHI, PSI, -70, 150, 20, 20) +   # Polyproline II
-        1.40 * g2d(PHI, PSI, -65, -40, 25, 25) +   # Alpha helix core
-        0.75 * g2d(PHI, PSI, -120, -50, 30, 25) +  # Extended Alpha
-        0.60 * g2d(PHI, PSI, 55, 45, 18, 20) +     # Left-handed Alpha helix
-        0.35 * g2d(PHI, PSI, 180, 180, 25, 25) +   # Border extensions
-        0.35 * g2d(PHI, PSI, -180, -180, 25, 25) +
-        0.35 * g2d(PHI, PSI, -180, 180, 25, 25) +
-        0.35 * g2d(PHI, PSI, 180, -180, 25, 25)
-    )
-
     fig = go.Figure()
 
-    # 2. Smooth green filled contours matching classical PDB plots
-    fig.add_trace(go.Contour(
-        x=phi_range,
-        y=psi_range,
-        z=Z,
-        showscale=False,
-        contours=dict(
-            coloring='heatmap',
-            showlines=True,
-            start=0.06,
-            end=1.2,
-            size=0.20
-        ),
-        line=dict(color='rgba(40, 90, 40, 0.65)', width=1),
-        colorscale=[
-            [0.0, '#FFFFFF'],      # Disallowed region (White background)
-            [0.10, '#E8F5E9'],     # Generously Allowed (Very pale green)
-            [0.35, '#A5D6A7'],     # Allowed (Light green)
-            [0.70, '#4CAF50'],     # Favored (Medium green)
-            [1.00, '#2E7D32']      # Core Favored (Rich green)
-        ],
-        hoverinfo='skip'
-    ))
+    # 1. Define distinct allowed structural region shapes (Polygon blocks)
+    # Beta-sheet region (Top-Left)
+    fig.add_shape(
+        type="path",
+        path="M -180,60 L -60,60 L -30,120 L -60,180 L -180,180 Z",
+        fillcolor="#d63384",
+        opacity=0.8,
+        line=dict(color="#000000", width=1)
+    )
+    
+    # Right-handed alpha-helix region (Bottom-Left)
+    fig.add_shape(
+        type="path",
+        path="M -140,-90 L -40,-90 L -40,-10 L -90,0 L -140,-30 Z",
+        fillcolor="#d63384",
+        opacity=0.8,
+        line=dict(color="#000000", width=1)
+    )
 
-    # 3. Center dashed zero-crosshairs (0°, 0°)
+    # Left-handed alpha-helix region (Middle-Right Box)
+    fig.add_shape(
+        type="rect",
+        x0=35, y0=30, x1=90, y1=90,
+        fillcolor="#0dcaf0",
+        opacity=0.6,
+        line=dict(color="#000000", width=1)
+    )
+
+    # Region Text Labels
+    fig.add_annotation(x=-110, y=120, text="Beta-sheet", showarrow=False, font=dict(size=11, color="white"))
+    fig.add_annotation(x=-90, y=-50, text="Right handed<br>alpha-helix", showarrow=False, font=dict(size=9, color="white"))
+    fig.add_annotation(x=62.5, y=60, text="Left handed<br>alpha-helix.", showarrow=False, font=dict(size=8, color="black"))
+
+    # 2. Center dashed zero-crosshairs (0°, 0°)
     fig.add_hline(y=0, line_dash="dash", line_color="#888888", line_width=1)
     fig.add_vline(x=0, line_dash="dash", line_color="#888888", line_width=1)
 
-    # 4. Target mutation marker diamond
+    # 3. Target mutation marker (Yellow circle with black outline)
     fig.add_trace(go.Scatter(
         x=[phi],
         y=[psi],
         mode='markers+text',
         marker=dict(
-            color='#D32F2F', 
+            color='#FFEB3B', 
             size=14, 
-            symbol='diamond',
-            line=dict(color='#FFFFFF', width=1.5)
+            symbol='circle',
+            line=dict(color='#000000', width=1.5)
         ),
-        text=[f"  <b>{mutation}</b>"],
+        text=[f"  <b>{mutation}</b> (φ:{phi:.1f}°, ψ:{psi:.1f}°)"],
         textposition="top right",
-        textfont=dict(size=12, color="#B71C1C"),
+        textfont=dict(size=11, color="#222222"),
         name=mutation,
         cliponaxis=False
     ))
 
-    # 5. Canvas layout styling matching exact image header
+    # 4. Canvas layout styling matching your layout requirement
     fig.update_layout(
         title=dict(
-            text="Ramachandran Plots",
-            font=dict(size=16, color="#333333", family="Arial, sans-serif")
+            text="The Ramachandran Plot",
+            font=dict(size=16, color="#000000", family="Arial, sans-serif")
         ),
         plot_bgcolor='#FFFFFF',
         paper_bgcolor='#FFFFFF',
-        width=500,
-        height=500,
-        margin=dict(l=75, r=40, t=55, b=75),
+        width=480,
+        height=480,
+        margin=dict(l=60, r=30, t=50, b=60),
         showlegend=False
     )
 
-    # 6. Greek Phi (Φ) X-Axis labeling & exact ticks (-180°, 0°, 180°)
+    # 5. X-Axis styling (-180° to 180°)
     fig.update_xaxes(
-        title_text="<span style='font-size:26px; font-family:serif;'><b>Φ</b></span>",
+        title_text="<b>+phi</b>",
+        title_font=dict(size=12, color="green"),
         range=[-180, 180],
         tickvals=[-180, 0, 180],
-        ticktext=['-180°', '0°', '180°'],
-        tickfont=dict(size=13, color="#222222"),
+        ticktext=['-180', '0', '+phi'],
+        tickfont=dict(size=11, color="#222222"),
         showline=True,
-        linecolor='#333333',
-        linewidth=1.2,
+        linecolor='#000000',
+        linewidth=1,
         mirror=True
     )
 
-    # 7. Greek Psi (Ψ) Y-Axis labeling & exact ticks (-180°, 0°, 180°)
+    # 6. Y-Axis styling (-180° to 180°)
     fig.update_yaxes(
-        title_text="<span style='font-size:26px; font-family:serif;'><b>Ψ</b></span>",
+        title_text="<b>+psi</b>",
+        title_font=dict(size=12, color="green"),
         range=[-180, 180],
         tickvals=[-180, 0, 180],
-        ticktext=['-180°', '0°', '180°'],
-        tickfont=dict(size=13, color="#222222"),
+        ticktext=['-180', '0', '+180'],
+        tickfont=dict(size=11, color="#222222"),
         showline=True,
-        linecolor='#333333',
-        linewidth=1.2,
+        linecolor='#000000',
+        linewidth=1,
         mirror=True
     )
 
     return fig
-
-    
 # ========= STEP 8 & 9: DRUG DISCOVERY (CHEMBL API) =========
 
 def fetch_chembl_drugs(uniprot_id: str) -> list:
