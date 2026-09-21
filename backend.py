@@ -247,52 +247,52 @@ AA_VOLUME = {
 
 def predict_thermodynamic_stability(wt_aa: str, mut_aa: str, wt_property: str, mut_property: str) -> dict:
     """
-    Computes ΔΔG (kcal/mol) with a scaled negative baseline shift for favorable substitutions.
+    Computes Gibbs Free Energy (ΔG, kcal/mol) with a negative baseline shift
+    so that favorable/stable states yield negative values.
     """
     hydro_diff = KYTE_DOOLITTLE.get(mut_aa, 0.0) - KYTE_DOOLITTLE.get(wt_aa, 0.0)
     vol_diff = AA_VOLUME.get(mut_aa, 0.0) - AA_VOLUME.get(wt_aa, 0.0)
     blosum = blosum62_score(wt_aa, mut_aa)
 
-    # Increased BLOSUM subtraction weight and slight baseline offset
-    # to allow well-conserved/favorable changes to naturally read negative.
-    ddg_score = -0.25  # Slight baseline favorability offset
+    # Deeper negative baseline to pull favorable changes into negative ΔG
+    delta_g_score = -0.6  
     
-    # Evolutionary driver (stronger negative pull for positive blosum scores)
-    ddg_score -= (blosum * 0.55)  
+    # Evolutionary driver
+    delta_g_score -= (blosum * 0.50)  
     
     # Physical mismatch penalties
-    ddg_score += (abs(vol_diff) / 100.0) * 0.25
-    ddg_score += abs(hydro_diff) * 0.04
+    delta_g_score += (abs(vol_diff) / 100.0) * 0.2
+    delta_g_score += abs(hydro_diff) * 0.03
 
-    # Structural breakers (add penalties)
+    # Structural breakers
     if 'P' in (wt_aa, mut_aa):
-        ddg_score += 0.7
+        delta_g_score += 0.6
     if 'G' in (wt_aa, mut_aa):
-        ddg_score += 0.4
+        delta_g_score += 0.3
     if wt_aa == 'C' and mut_aa != 'C':
-        ddg_score += 1.0
+        delta_g_score += 0.8
 
-    ddg_score = round(ddg_score, 2)
+    delta_g_score = round(delta_g_score, 2)
 
     # Classification logic supporting negative values
-    if ddg_score <= -0.1:
-        status, color, alert = "Thermodynamically Stable / Favorable", "🟢", "Mutation is estimated to improve structural stability."
-    elif ddg_score >= 2.0:
-        status, color, alert = "Highly Destabilizing", "🔴", "High risk of protein misfolding or structural collapse."
-    elif ddg_score >= 0.8:
-        status, color, alert = "Mildly Destabilizing", "🟠", "May cause local flexibility changes but core structure likely intact."
+    if delta_g_score <= -0.1:
+        status, color, alert = "Thermodynamically Stable / Favorable", "🟢", "State is estimated to be energetically stable."
+    elif delta_g_score >= 2.0:
+        status, color, alert = "High Energy State", "🔴", "High risk of structural instability."
+    elif delta_g_score >= 0.8:
+        status, color, alert = "Elevated Energy", "🟠", "Moderate conformational strain."
     else:
-        status, color, alert = "Neutral / Tolerated", "🟢", "Mutation is near-neutral for thermodynamic stability."
+        status, color, alert = "Neutral / Tolerated", "🟢", "Energy level is near baseline."
 
     return {
-        "ddG": ddg_score,
+        "delta_g": delta_g_score,  # Changed from ddG to delta_g
         "status": status,
         "color": color,
         "alert": alert,
         "hydrophobicity_delta": round(hydro_diff, 2),
         "volume_delta": round(vol_diff, 1),
         "blosum62": blosum,
-        "method": "Bidirectional empirical model with offset scaling."
+        "method": "Empirical Gibbs Free Energy (ΔG) model with baseline offset."
     }
 def compute_composite_risk(stability: dict, pathogenicity: dict, ppi_count: int, angles_valid: bool) -> dict:
     """
