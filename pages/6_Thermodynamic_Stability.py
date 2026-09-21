@@ -14,10 +14,8 @@ if not st.session_state.get('payload'):
 payload = st.session_state['payload']
 
 with st.spinner("⚛️ Calculating biophysical potential energy and ΔΔG shifts..."):
-    # Re-extract the basic features so we know what amino acids we are comparing
     features = extract_features(payload['sequence'], payload['mutation'])
     
-    # Calculate the thermodynamics based on the features
     stability_data = predict_thermodynamic_stability(
         wt_aa=features["Wildtype AA"],
         mut_aa=features["Mutant AA"],
@@ -31,15 +29,20 @@ st.session_state['results']['stability'] = stability_data
 
 col1, col2 = st.columns([1, 1])
 
+# Safely extract the score using 'ddG' (matching backend)
+ddg_val = stability_data.get('ddG', 0.0)
+
 with col1:
     st.markdown("<h3>⚙️ Gibbs Free Energy (ΔΔG)</h3>", unsafe_allow_html=True)
-    st.info("ΔΔG measures the change in structural stability. **Higher positive values** mean the mutation forces the protein into a higher-energy, unstable state.")
+    st.info("ΔΔG measures structural stability changes. **Negative values** indicate a stabilizing mutation; **positive values** indicate a destabilizing shift.")
     
-    # Display the score like a digital readout
+    # Format readout cleanly with proper sign (+ or -)
+    formatted_val = f"+{ddg_val:.2f}" if ddg_val > 0 else f"{ddg_val:.2f}"
+    
     st.metric(
         label="Calculated ΔΔG (kcal/mol)", 
-        value=f"+{stability_data['ddG']}" if stability_data['ddG'] > 0 else f"{stability_data['ddG']}",
-        delta="Destabilizing" if stability_data['ddG'] > 0 else "Stabilizing",
+        value=formatted_val,
+        delta="Destabilizing" if ddg_val > 0 else "Stabilizing",
         delta_color="inverse"
     )
 
