@@ -5,7 +5,7 @@ from backend import apply_custom_css, extract_features, predict_thermodynamic_st
 st.set_page_config(page_title="Step 6 | ProtMind AI", page_icon="🔥")
 apply_custom_css()
 
-st.markdown("<h2>🔥 Step 6: Thermodynamic Stability (ΔΔG)</h2>", unsafe_allow_html=True)
+st.markdown("<h2>🔥 Step 6: Thermodynamic Stability (ΔG)</h2>", unsafe_allow_html=True)
 
 if not st.session_state.get('payload'):
     st.warning("⚠️ No active protein data found. Please complete Step 1: User Input first.")
@@ -13,7 +13,7 @@ if not st.session_state.get('payload'):
 
 payload = st.session_state['payload']
 
-with st.spinner("⚛️ Calculating biophysical potential energy and ΔΔG shifts..."):
+with st.spinner("⚛️ Calculating biophysical potential energy and ΔG shifts..."):
     features = extract_features(payload['sequence'], payload['mutation'])
     
     stability_data = predict_thermodynamic_stability(
@@ -29,20 +29,20 @@ st.session_state['results']['stability'] = stability_data
 
 col1, col2 = st.columns([1, 1])
 
-# Safely extract the score using 'ddG' (matching backend)
-ddg_val = stability_data.get('ddG', 0.0)
+# Safely extract the score using 'ddG' (or 'delta_g' depending on your backend key)
+delta_g_val = stability_data.get('ddG', 0.0)
 
 with col1:
-    st.markdown("<h3>⚙️ Gibbs Free Energy (ΔΔG)</h3>", unsafe_allow_html=True)
-    st.info("ΔΔG measures structural stability changes. **Negative values** indicate a stabilizing mutation; **positive values** indicate a destabilizing shift.")
+    st.markdown("<h3>⚙️ Gibbs Free Energy (ΔG)</h3>", unsafe_allow_html=True)
+    st.info("ΔG measures the conformational energy state. **Negative values** indicate a stable, favorable state; **positive values** indicate high structural energy.")
     
     # Format readout cleanly with proper sign (+ or -)
-    formatted_val = f"+{ddg_val:.2f}" if ddg_val > 0 else f"{ddg_val:.2f}"
+    formatted_val = f"+{delta_g_val:.2f}" if delta_g_val > 0 else f"{delta_g_val:.2f}"
     
     st.metric(
-        label="Calculated ΔΔG (kcal/mol)", 
+        label="Calculated ΔG (kcal/mol)", 
         value=formatted_val,
-        delta="Destabilizing" if ddg_val > 0 else "Stabilizing",
+        delta="Unstable" if delta_g_val > 0 else "Stable",
         delta_color="inverse"
     )
 
