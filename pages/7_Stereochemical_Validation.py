@@ -34,6 +34,14 @@ else:
         st.metric(label="Phi (Φ) Angle", value=f"{angles['phi']:.2f}°")
         st.metric(label="Psi (Ψ) Angle", value=f"{angles['psi']:.2f}°")
         st.info("Angles falling in the blank (dark) areas of the plot represent steric clashes—the atoms are physically overlapping.")
+        st.info("Angles falling in the blank (white) areas of the plot represent steric clashes—the atoms are physically overlapping.")
+    
+        st.markdown("""
+        - **Allowed (Pink):** Optimal backbone torsion without steric clashes.
+        - **Partially Allowed (Blue):** Torsion permitted with slight conformational strain.
+        - **Disallowed (White):** Severe steric overlap; mutation is highly unstable.
+        """)
+
         
     with col2:
         fig = generate_ramachandran_plot(angles['phi'], angles['psi'], mutation)
