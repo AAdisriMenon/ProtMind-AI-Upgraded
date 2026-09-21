@@ -25,15 +25,17 @@ if st.session_state['payload']:
     ]
     done = sum(1 for _, key in stage_map if key in results)
     st.progress(done / len(stage_map), text=f"Pipeline progress: {done}/{len(stage_map)} analysis stages completed this session")
+st.markdown("### Stereochemical Validation")
+st.markdown("Evaluating backbone strain and torsional feasibility of the mutated residue.")
 
-# 1. Render your Ramachandran plot chart
+# Render your plot
 fig = generate_ramachandran_plot(phi, psi, mutation)
 st.plotly_chart(fig, use_container_width=True)
 
-# 2. Add the classification cards and descriptive bullet points right below it
-st.markdown("### Classification")
-st.success("Secondary Structure: Beta-sheet") # Or dynamically bound to your classification variable
-st.info("Steric Feasibility: ✅ Allowed (Optimal Sterics)")
+# Description Box matching your layout design
+st.info("""
+**Angles falling in the blank (white) areas of the plot represent steric clashes—the atoms are physically overlapping.**
+""")
 
 st.markdown("""
 - **Allowed (Pink):** Optimal backbone torsion without steric clashes.
